@@ -19,6 +19,7 @@ class DecayStats:
     max_activation: float
     monopolization_score: float
 
+
 class ActivationDecayManager:
     def __init__(self):
         self.last_consolidation = time.time()
@@ -47,13 +48,28 @@ class ActivationDecayManager:
             self.last_consolidation = now
         return self.get_stats(memories)
 
-    def get_stats(self, memories):
+    def get_stats(self, memories) -> DecayStats:
         activations = [getattr(m, 'activation', 0.0) for m in memories]
+        total = len(activations)
+        avg = sum(activations) / total if total else 0.0
+        max_act = max(activations) if activations else 0.0
+
+        # BUG FIX #7: monopolization_score was always 0.0.
+        # Compute the fraction of total activation held by the top cluster
+        # (memories above OVER_ACTIVATION_THRESHOLD) as a rough monopolization
+        # signal consistent with MONOPOLIZATION_THRESHOLD semantics.
+        monopolization_score = 0.0
+        if total > 0 and max_act > 0:
+            total_activation = sum(activations)
+            if total_activation > 0:
+                top_activations = [a for a in activations if a >= OVER_ACTIVATION_THRESHOLD]
+                monopolization_score = sum(top_activations) / total_activation
+
         return DecayStats(
-            total_memories=len(memories),
-            avg_activation=sum(activations)/len(activations) if activations else 0.0,
-            max_activation=max(activations) if activations else 0.0,
-            monopolization_score=0.0
+            total_memories=total,
+            avg_activation=avg,
+            max_activation=max_act,
+            monopolization_score=monopolization_score,
         )
 
     def update_on_access(self, memory) -> None:
