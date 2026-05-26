@@ -51,3 +51,27 @@ PRUNE_IMPORTANCE_THRESHOLD = 0.2
 # NLI Contradiction Detection
 # Minimum contradiction probability (0.0–1.0) for the NLI model to flag a pair.
 NLI_CONTRADICTION_THRESHOLD = 0.7
+
+# =============================================================================
+# Telemetry Configuration
+# =============================================================================
+
+# Shannon entropy threshold (bits) below which retrieval is considered
+# over-concentrated and autonomic regulation is triggered.
+ENTROPY_THRESHOLD = 2.0
+
+# Sliding window (seconds) for retrieval-frequency tracking.
+TELEMETRY_WINDOW_SECONDS = 3600  # 1 hour
+
+# Cooldown between autonomic regulation steps (seconds).
+REGULATION_COOLDOWN_SECONDS = 30
+
+# Maximum factor by which NOVELTY_WEIGHT can be increased during correction.
+MAX_DIVERSITY_BONUS_FACTOR = 3.0
+
+# Minimum ACTIVATION_PENALTY_WEIGHT during correction (floor).
+MIN_ACTIVATION_PENALTY_WEIGHT = 0.05
+
+# Exploratory mode: when active, this many random memories are injected
+# into the retrieval result regardless of similarity threshold.
+EXPLORATORY_INJECTION_COUNT = 3
