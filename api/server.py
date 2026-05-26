@@ -10,3 +10,105 @@ from core.retrieval.retrieve import retrieve_memories
  
  
 app = FastAPI()
+ 
+ 
+# --------------------------------------------------
+# INITIALIZE DREAMCLOUD CORE
+# --------------------------------------------------
+ 
+embedder = Embedder()
+ 
+index = FAISSIndex()
+ 
+memory_core = MemoryCore(
+    embedder=embedder,
+    index=index
+)
+ 
+ 
+# --------------------------------------------------
+# REQUEST MODELS
+# --------------------------------------------------
+ 
+class StoreRequest(BaseModel):
+    content: str
+    memory_type: str = "general"
+    metadata: Optional[dict] = {}
+ 
+ 
+class RetrieveRequest(BaseModel):
+    query: str
+    top_k: int = 5
+ 
+ 
+# --------------------------------------------------
+# STORE MEMORY
+# --------------------------------------------------
+ 
+@app.post("/store")
+ 
+async def store_memory(
+    request: StoreRequest
+):
+ 
+    memory = Memory(
+        content=request.content,
+        type=request.memory_type,
+        metadata=request.metadata
+    )
+ 
+    memory_core.store(memory)
+ 
+    return {
+        "status": "success",
+        "memory_id": memory.id
+    }
+ 
+ 
+# --------------------------------------------------
+# RETRIEVE MEMORY
+# --------------------------------------------------
+ 
+@app.post("/retrieve")
+ 
+async def retrieve_memory(
+    request: RetrieveRequest
+):
+ 
+    memories = retrieve_memories(
+        query=request.query,
+        embedder=embedder,
+        index=index,
+        k=request.top_k
+    )
+ 
+    results = []
+ 
+    for memory in memories:
+ 
+        results.append({
+            "id": memory.id,
+            "content": memory.content,
+            "importance": memory.importance,
+            "reliability": memory.reliability,
+            "metadata": memory.metadata
+        })
+ 
+    return {
+        "status": "success",
+        "results": results
+    }
+ 
+ 
+# --------------------------------------------------
+# HEALTH CHECK
+# --------------------------------------------------
+ 
+@app.get("/health")
+ 
+async def health():
+ 
+    return {
+        "status": "online",
+        "system": "DreamCloudV12"
+    }
