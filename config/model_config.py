@@ -1,0 +1,10 @@
+LLAMA_EXE = ""
+ 
+MODEL_PATH = ""
+ 
+MAX_TOKENS = 128
+TEMPERATURE = 0.7
+THREADS = 4
+TIMEOUT_SECONDS = 300
+ 
+NLI_MODEL_PATH = "models/nli/cross-encoder-nli-MiniLM2-L6-H768"
