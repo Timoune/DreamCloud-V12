@@ -20,11 +20,6 @@ A persistent, intelligent long-term memory system featuring semantic retrieval, 
 
 ---
 
-## 📁 Project Structure
-
-DreamCloud-V12/ ├── main.py # Entry point ├── requirements.txt ├── README.md ├── api/ │ └── server.py # FastAPI REST interface ├── config/ │ ├── memory_config.py │ ├── model_config.py │ └── runtime_config.py ├── core/ │ ├── dreamcycle/ │ │ ├── dream_cycle.py │ │ └── concept_manager.py │ ├── embeddings/ │ │ └── embedder.py │ ├── graph/ │ │ └── graph_manager.py │ ├── infrastructure/ │ │ ├── logger.py │ │ ├── event_bus.py │ │ ├── diagnostics.py │ │ └── recovery.py │ ├── memory/ │ │ ├── store.py │ │ ├── schema.py │ │ ├── extractor.py │ │ ├── pipeline.py │ │ ├── memory_core.py │ │ ├── memory_filter.py │ │ ├── validator.py │ │ └── serializer.py │ ├── retrieval/ │ │ ├── faiss_index.py │ │ ├── retrieve.py │ │ └── ranking.py │ ├── runtime/ │ │ ├── engine.py # Main orchestration engine │ │ ├── prompt_builder.py │ │ ├── llama_runner.py │ │ ├── nli_validator.py │ │ ├── response_cleaner.py │ │ └── session.py │ └── utils/ │ ├── filesystem.py │ ├── hashing.py │ └── timers.py ├── models/ │ ├── embeddings/ │ └── nli/ ├── data/ # SQLite, FAISS, logs, graph (gitignored) └── tests/ ├── test_memory_basic.py ├── test_memory_intelligence.py └── test_dreamcloud_v3.py
----
-
 ## 🚀 Quick Start
 
 1. **Clone the repo**
