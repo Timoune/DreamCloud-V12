@@ -4,6 +4,8 @@
 
 A persistent, intelligent long-term memory system featuring semantic retrieval, graph associations, reinforcement dynamics, contradiction resolution (NLI-powered), and autonomous "DreamCycle" concept synthesis.
 
+**IMPORTANT: This README is not up-to-date, as i am adding more features.
+
 ---
 
 ## ✨ Key Features
