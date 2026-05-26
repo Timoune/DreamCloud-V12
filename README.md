@@ -24,8 +24,8 @@ A persistent, intelligent long-term memory system featuring semantic retrieval, 
 
 1. **Clone the repo**
    ```bash
-   git clone https://github.com/Timoune/DreamCloud-V12.git
-   cd DreamCloud-V12
+   git clone https://github.com/Timoune/DreamCloud.git
+   cd DreamCloud
 	2	Install dependencies pip install -r requirements.txt
 	3	
 	4	Start llama.cpp server (required for inference)
