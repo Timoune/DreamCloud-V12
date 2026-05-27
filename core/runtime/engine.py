@@ -79,6 +79,7 @@ from core.telemetry import (
     MemoryStarvationDetector,
     GraphHeatmapTracker,
     AutonomicRegulator,
+    ActivationDecayManager,             # BUG FIX #5: was never imported or used
 )
 
 DREAM_CYCLE_INTERVAL = 60
@@ -238,6 +239,9 @@ class DreamCloudEngine:
             entropy_monitor=self.entropy_monitor,
             config_module=mem_cfg,
         )
+        # BUG FIX #5: ActivationDecayManager was imported (incorrectly) but
+        # never instantiated or called anywhere in the engine.  Wire it in now.
+        self.decay_manager      = ActivationDecayManager()
 
     # ------------------------------------------------------------------
     # Startup
@@ -444,6 +448,12 @@ class DreamCloudEngine:
 
                 # -- Periodic starvation check -------------------------
                 self.starvation_detector.check()
+
+                # -- Periodic decay consolidation (hybrid sweep) -------
+                # BUG FIX #5: ActivationDecayManager.consolidate() was never
+                # called; it now runs the hybrid sweep when its interval elapses.
+                all_mems_for_decay = load_all_memories()
+                decay_stats = self.decay_manager.consolidate(all_mems_for_decay)
 
             except KeyboardInterrupt:
                 print("\nShutting down DreamCloud.")

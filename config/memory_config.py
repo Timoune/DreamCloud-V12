@@ -1,3 +1,5 @@
+# DreamCloud V14 - Activation Decay Architectures
+
 MEMORY_PATH = "data/memories/"
 FAISS_PATH  = "data/faiss/"
 LOG_PATH    = "data/logs/"
@@ -6,7 +8,27 @@ GRAPH_PATH  = "data/graph/"
 
 TOP_K         = 10
 EMBEDDING_DIM = 384
-SCHEMA_VERSION = 4   # v4 adds activation, last_activated for cognitive homeostasis
+SCHEMA_VERSION = 5   # v5 adds full decay_strategy support
+
+# ===========================================================================
+# Activation Decay Architectures (V14)
+# ===========================================================================
+
+DECAY_STRATEGY = "hybrid"  # Options: "global_sweep", "lazy", "hybrid"
+
+# Global Sweep Decay
+GLOBAL_DECAY_RATE = 0.985          # Multiplicative decay per sweep
+SWEEP_INTERVAL_SECONDS = 300       # Every 5 minutes
+
+# Lazy Decay
+LAZY_DECAY_LAMBDA = 0.0015         # Decay constant (higher = faster decay)
+
+# Hybrid Model
+HYBRID_CONSOLIDATION_INTERVAL = 1800  # 30 min full consolidation
+ANOMALY_DETECTION_ENABLED = True
+RUNAWAY_REINFORCEMENT_THRESHOLD = 25.0
+OVER_ACTIVATION_THRESHOLD = 8.0
+MONOPOLIZATION_THRESHOLD = 0.65     # % of top activations from single cluster
 
 # reinforcement
 REINFORCEMENT_THRESHOLD    = 0.55
@@ -36,37 +58,16 @@ PRUNE_IMPORTANCE_THRESHOLD = 0.2
 NLI_CONTRADICTION_THRESHOLD = 0.7
 
 # ===========================================================================
-# Cognitive Homeostasis / Telemetry
+# Cognitive Homeostasis / Telemetry (kept for compatibility)
 # ===========================================================================
 
-# Time constant (seconds) for retrieval-pressure (activation) decay
 ACTIVATION_DECAY_CONSTANT = 60.0
-
-# Sensitivity multiplier for the activation penalty in scoring
 ACTIVATION_PENALTY_WEIGHT = 0.4
-
-# Weight of the novelty bonus applied to less-recently-retrieved memories
 NOVELTY_WEIGHT = 0.25
-
-# Time constant (seconds) for novelty fading
 NOVELTY_DECAY_CONSTANT = 300.0
-
-# Shannon entropy threshold (bits) below which retrieval is considered
-# over-concentrated and autonomic regulation is triggered.
 ENTROPY_THRESHOLD = 2.0
-
-# Sliding window (seconds) for retrieval-frequency tracking.
-TELEMETRY_WINDOW_SECONDS = 3600  # 1 hour
-
-# Cooldown between autonomic regulation steps (seconds).
+TELEMETRY_WINDOW_SECONDS = 3600
 REGULATION_COOLDOWN_SECONDS = 30
-
-# Maximum factor by which NOVELTY_WEIGHT can be increased during correction.
 MAX_DIVERSITY_BONUS_FACTOR = 3.0
-
-# Minimum ACTIVATION_PENALTY_WEIGHT during correction (floor).
 MIN_ACTIVATION_PENALTY_WEIGHT = 0.05
-
-# Exploratory mode: when active, this many random memories are injected
-# into the retrieval result regardless of similarity threshold.
 EXPLORATORY_INJECTION_COUNT = 3

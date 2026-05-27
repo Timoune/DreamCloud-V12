@@ -70,10 +70,20 @@ def _migrate_v3_to_v4(data: dict) -> dict:
     return data
 
 
+def _migrate_v4_to_v5(data: dict) -> dict:
+    """BUG FIX #6: v5 added full decay_strategy support.
+    No new fields required â this migration simply stamps the version
+    so existing records are recognised as current and aren't re-migrated
+    on every load."""
+    data["schema_version"] = 5
+    return data
+
+
 _MIGRATIONS = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
     3: _migrate_v3_to_v4,
+    4: _migrate_v4_to_v5,   # BUG FIX #6: was missing, causing silent no-op skip
 }
 
 
