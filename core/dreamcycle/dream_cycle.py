@@ -22,15 +22,17 @@ from core.graph.graph_manager import MemoryGraph
 from core.dreamcycle.concept_manager import create_concept
 from core.infrastructure.logger import logger
 from core.memory.retention import RetentionPolicy, RetentionClass, is_prune_safe
+from core.memory.importance_backprop import ImportanceBackpropEngine
 from config.memory_config import (
     RETENTION_AUDIT_LOG_ENABLED,
     RETENTION_AUTO_CRITICAL_IMPORTANCE,
     RETENTION_CRITICAL_TYPES,
+    BACKPROP_DELAYED_CONSOLIDATION,
 )
  
 # Maximum number of ANN neighbours to inspect per memory during clustering.
 # Increasing this raises recall at the cost of more comparisons, but it
-# remains O(N * _ANN_K) rather than O(N²).
+# remains O(N * _ANN_K) rather than O(NÂ²).
 _ANN_K = 16
  
  
@@ -40,6 +42,7 @@ class DreamCycle:
         self.embedder = embedder or Embedder()
         self.graph    = graph    or MemoryGraph()
         self.index    = index
+        self.backprop = ImportanceBackpropEngine(self.graph)
  
     def run(self):
         logger.info("DreamCycle started...")
@@ -56,6 +59,12 @@ class DreamCycle:
  
         self._create_concepts(clusters)
  
+        # Reload so concept memories and any importance changes from this
+        # session are visible to backprop before pruning runs.
+        memories = load_all_memories()
+ 
+        self._run_backprop_pass(memories)
+ 
         self._prune(memories)
  
         logger.info("DreamCycle complete.")
@@ -67,7 +76,7 @@ class DreamCycle:
                 save_memory(m)
  
     # ------------------------------------------------------------------
-    # Kept for _create_concepts() — per-member similarity to graph.connect
+    # Kept for _create_concepts() â per-member similarity to graph.connect
     # ------------------------------------------------------------------
  
     def _cosine(self, a, b) -> float:
@@ -79,7 +88,7 @@ class DreamCycle:
         return dot / (na * nb)
  
     # ------------------------------------------------------------------
-    # FAISS-accelerated clustering  (replaces O(N²) loop)
+    # FAISS-accelerated clustering  (replaces O(NÂ²) loop)
     # ------------------------------------------------------------------
  
     def _cluster(self, memories) -> list:
@@ -95,7 +104,7 @@ class DreamCycle:
            CONCEPT_SIMILARITY_THRESHOLD becomes the cluster seed; all
            qualifying neighbours in its ANN result are folded in immediately.
            This mirrors the original single-pass greedy strategy but runs in
-           O(N * _ANN_K) time instead of O(N²).
+           O(N * _ANN_K) time instead of O(NÂ²).
  
         Falls back gracefully: if any memory lacks an embedding it is placed
         in a singleton cluster so it is never silently dropped.
@@ -116,7 +125,7 @@ class DreamCycle:
         invalid = [m for m in raw_memories if not m.embedding]
  
         if not valid:
-            # Nothing to cluster — return singletons.
+            # Nothing to cluster â return singletons.
             return [[m] for m in raw_memories]
  
         dim     = len(valid[0].embedding)
@@ -124,7 +133,7 @@ class DreamCycle:
         _faiss.normalize_L2(vectors)  # in-place normalisation for cosine
  
         # ----------------------------------------------------------------
-        # Temporary FAISS index — IndexFlatIP is exact but still O(N * k)
+        # Temporary FAISS index â IndexFlatIP is exact but still O(N * k)
         # for the batched search; no training required.
         # ----------------------------------------------------------------
         ann_index = _faiss.IndexFlatIP(dim)
@@ -234,6 +243,40 @@ class DreamCycle:
     # Pruning
     # ------------------------------------------------------------------
  
+
+    # ------------------------------------------------------------------
+    # Retrospective Importance Revaluation (v15)
+    # ------------------------------------------------------------------
+
+    def _run_backprop_pass(self, memories: list) -> None:
+        """
+        Run the Retrospective Importance Revaluation engine.
+
+        Sequence
+        --------
+        1. If delayed consolidation is enabled, flush updates queued during
+           the previous DreamCycle or during live inference.
+        2. Run a fresh full-pass calculation over the current memory set,
+           queueing or applying updates per the BACKPROP_DELAYED_CONSOLIDATION
+           config flag.
+
+        Called *after* concept creation (so concept nodes can act as triggers)
+        and *before* pruning (so retroactively elevated memories survive).
+        """
+        logger.info("[BACKPROP] Starting Retrospective Importance Revaluation pass...")
+
+        if BACKPROP_DELAYED_CONSOLIDATION:
+            flushed = self.backprop.flush_queue(memories)
+            if flushed:
+                memories[:] = load_all_memories()
+
+        n = self.backprop.run_full_pass(memories)
+
+        if not BACKPROP_DELAYED_CONSOLIDATION:
+            logger.info(f"[BACKPROP] Immediate mode: {n} importance(s) updated.")
+        else:
+            logger.info(f"[BACKPROP] Delayed mode: {n} update(s) queued for next DreamCycle.")
+
     # ------------------------------------------------------------------
     # Retention policy helpers
     # ------------------------------------------------------------------
@@ -283,7 +326,7 @@ class DreamCycle:
             )
 
     # ------------------------------------------------------------------
-    # Pruning — retention-policy aware
+    # Pruning â retention-policy aware
     # ------------------------------------------------------------------
 
     def _prune(self, memories):
@@ -312,7 +355,7 @@ class DreamCycle:
                 rp = RetentionPolicy.from_dict(m.retention_policy)
                 logger.info(
                     f"[RETENTION] Skipped prune for memory {m.id[:8]}... "
-                    f"— {rp.describe()}"
+                    f"â {rp.describe()}"
                 )
                 continue
 
