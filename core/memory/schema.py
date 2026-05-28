@@ -1,25 +1,38 @@
 """
-Memory schema — v4.
+Memory schema — v6.
+
+Changes from v5
+---------------
+* `retention_policy` (dict, default VOLATILE) replaces the implicit boolean
+  archival flag pattern.  Every memory now carries a structured policy object
+  that records *class* (volatile / standard / protected / critical), *source*
+  (who assigned it), *reason* (why), and an optional *expires* timestamp.
+
+  Critical memories (security alerts, catastrophic-precursor logs, one-time
+  events) are assigned RetentionClass.CRITICAL and are immune to DreamCycle
+  pruning regardless of their importance score.
+
+  See ``core/memory/retention.py`` for the full policy API.
+
+Changes from v4
+---------------
+* v5 added full decay_strategy support (no new fields).
 
 Changes from v3
 ---------------
-* `activation` (float, default 0.0) tracks cumulative retrieval pressure.
-  Decays exponentially between retrievals.  Used by the Cognitive Homeostasis
-  scorer to penalise over-retrieved memories and restore diversity.
+* v4: `activation` and `last_activated` for Cognitive Homeostasis.
 
-* `last_activated` (float, default 0.0) records the unix timestamp of the
-  most recent retrieval, used to compute time-decayed activation.
-
-All v3 features (typed memory, reliability, reinforcement_count, importance
-hard-cap) are unchanged.
+All earlier features (typed memory, reliability, reinforcement_count,
+importance hard-cap) are unchanged.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Dict
+from typing import List, Dict, Optional
 import time
 import uuid
 
 from config.memory_config import SCHEMA_VERSION
+from core.memory.retention import DEFAULT_POLICY
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +118,14 @@ class Memory:
     is_concept: bool      = False
     confidence: float     = 0.0
     source_ids: List[str] = field(default_factory=list)
+
+    # ------------------------------------------------------------------
+    # Retention policy (v6)
+    # ------------------------------------------------------------------
+    # Stored as a plain dict so Memory stays JSON-serialisable without a
+    # custom encoder.  Use RetentionPolicy.from_dict(m.retention_policy)
+    # to work with the structured object.
+    retention_policy: Dict = field(default_factory=lambda: dict(DEFAULT_POLICY))
 
     # ------------------------------------------------------------------
     # Importance property with hard cap
