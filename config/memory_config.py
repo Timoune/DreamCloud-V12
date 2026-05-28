@@ -8,7 +8,7 @@ GRAPH_PATH  = "data/graph/"
 
 TOP_K         = 10
 EMBEDDING_DIM = 384
-SCHEMA_VERSION = 5   # v5 adds full decay_strategy support
+SCHEMA_VERSION = 6   # v6 adds structured retention_policy
 
 # ===========================================================================
 # Activation Decay Architectures (V14)
@@ -71,3 +71,20 @@ REGULATION_COOLDOWN_SECONDS = 30
 MAX_DIVERSITY_BONUS_FACTOR = 3.0
 MIN_ACTIVATION_PENALTY_WEIGHT = 0.05
 EXPLORATORY_INJECTION_COUNT = 3
+
+# ===========================================================================
+# Retention Policies (v6)
+# ===========================================================================
+
+# Memories at or above this importance score that are also CRITICAL are
+# logged as a telemetry event (not used for pruning â just observability).
+RETENTION_AUDIT_LOG_ENABLED = True
+
+# Grace period (seconds) before an expired PROTECTED policy actually
+# allows the memory to be pruned on the next DreamCycle pass.
+RETENTION_EXPIRY_GRACE_SECONDS = 300  # 5 minutes
+
+# Auto-classify memories as CRITICAL when their importance exceeds this
+# threshold AND their type matches one of RETENTION_CRITICAL_TYPES.
+RETENTION_AUTO_CRITICAL_IMPORTANCE = 4.5
+RETENTION_CRITICAL_TYPES = {"emotional", "episodic"}  # types eligible for auto-critical
