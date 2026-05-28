@@ -80,7 +80,7 @@ def _migrate_v3_to_v4(data: dict) -> dict:
 
 def _migrate_v4_to_v5(data: dict) -> dict:
     """BUG FIX #6: v5 added full decay_strategy support.
-    No new fields required â this migration simply stamps the version
+    No new fields required Ã¢ÂÂ this migration simply stamps the version
     so existing records are recognised as current and aren't re-migrated
     on every load."""
     data["schema_version"] = 5
@@ -116,12 +116,29 @@ def _migrate_v5_to_v6(data: dict) -> dict:
     return data
 
 
+def _migrate_v6_to_v7(data: dict) -> dict:
+    """
+    v7: add Retrospective Importance Revaluation tracking fields.
+
+    backprop_boost   â cumulative importance delta added by backpropagation.
+    backprop_version â monotonic counter of backprop writes to this memory.
+
+    Existing memories start at 0 / 0 so they are eligible for their first
+    backprop pass without any special-casing in the engine.
+    """
+    data.setdefault("backprop_boost", 0.0)
+    data.setdefault("backprop_version", 0)
+    data["schema_version"] = 7
+    return data
+
+
 _MIGRATIONS = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
     3: _migrate_v3_to_v4,
     4: _migrate_v4_to_v5,   # BUG FIX #6: was missing, causing silent no-op skip
     5: _migrate_v5_to_v6,
+    6: _migrate_v6_to_v7,
 }
 
 
