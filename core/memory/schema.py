@@ -1,22 +1,26 @@
 """
-Memory schema — v6.
+Memory schema — v7.
+
+Changes from v6
+---------------
+* `backprop_boost`   (float, default 0.0) — cumulative importance added to
+  this memory by the Retrospective Importance Revaluation engine.  Stored
+  separately from the base importance so that audit logs can distinguish
+  original scoring from retroactively propagated signal.
+
+* `backprop_version` (int, default 0) — monotonic counter incremented each
+  time the backprop engine writes a new importance estimate to this memory.
+  Useful for detecting which memories are heavily connected to high-importance
+  events and for debugging propagation chains.
 
 Changes from v5
 ---------------
-* `retention_policy` (dict, default VOLATILE) replaces the implicit boolean
-  archival flag pattern.  Every memory now carries a structured policy object
-  that records *class* (volatile / standard / protected / critical), *source*
-  (who assigned it), *reason* (why), and an optional *expires* timestamp.
-
-  Critical memories (security alerts, catastrophic-precursor logs, one-time
-  events) are assigned RetentionClass.CRITICAL and are immune to DreamCycle
-  pruning regardless of their importance score.
-
-  See ``core/memory/retention.py`` for the full policy API.
+* v6: `retention_policy` (dict, default VOLATILE) — structured archival
+  policy replacing implicit boolean flags.
 
 Changes from v4
 ---------------
-* v5 added full decay_strategy support (no new fields).
+* v5: full decay_strategy support (no new fields).
 
 Changes from v3
 ---------------
@@ -122,10 +126,17 @@ class Memory:
     # ------------------------------------------------------------------
     # Retention policy (v6)
     # ------------------------------------------------------------------
-    # Stored as a plain dict so Memory stays JSON-serialisable without a
-    # custom encoder.  Use RetentionPolicy.from_dict(m.retention_policy)
-    # to work with the structured object.
     retention_policy: Dict = field(default_factory=lambda: dict(DEFAULT_POLICY))
+
+    # ------------------------------------------------------------------
+    # Retrospective Importance Revaluation (v7)
+    # ------------------------------------------------------------------
+    # How much importance the backprop engine has added to this memory.
+    # Stored separately so the original scoring signal is always auditable.
+    backprop_boost:   float = 0.0
+    # Incremented each time the backprop engine updates this memory's
+    # importance, enabling chain-depth analysis and convergence detection.
+    backprop_version: int   = 0
 
     # ------------------------------------------------------------------
     # Importance property with hard cap
