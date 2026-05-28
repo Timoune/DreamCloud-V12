@@ -21,6 +21,12 @@ from core.runtime.llama_runner import run_llama
 from core.graph.graph_manager import MemoryGraph
 from core.dreamcycle.concept_manager import create_concept
 from core.infrastructure.logger import logger
+from core.memory.retention import RetentionPolicy, RetentionClass, is_prune_safe
+from config.memory_config import (
+    RETENTION_AUDIT_LOG_ENABLED,
+    RETENTION_AUTO_CRITICAL_IMPORTANCE,
+    RETENTION_CRITICAL_TYPES,
+)
  
 # Maximum number of ANN neighbours to inspect per memory during clustering.
 # Increasing this raises recall at the cost of more comparisons, but it
@@ -228,12 +234,92 @@ class DreamCycle:
     # Pruning
     # ------------------------------------------------------------------
  
-    def _prune(self, memories):
-        removed = 0
+    # ------------------------------------------------------------------
+    # Retention policy helpers
+    # ------------------------------------------------------------------
+
+    def _apply_auto_retention(self, memories) -> None:
+        """
+        Auto-elevate memories to CRITICAL when they meet importance and type
+        thresholds, persisting the updated policy back to the store.
+
+        This runs before pruning so that newly critical memories are never
+        accidentally deleted in the same DreamCycle pass.
+        """
         for m in memories:
             if m.is_concept:
                 continue
-            if m.importance < PRUNE_IMPORTANCE_THRESHOLD:
-                delete_memory(m.id)
-                removed += 1
-        logger.info(f"[PRUNE] Removed {removed} memories")
+
+            rp = RetentionPolicy.from_dict(m.retention_policy)
+            if rp.class_ == RetentionClass.CRITICAL:
+                continue  # already at max protection
+
+            if (
+                m.importance >= RETENTION_AUTO_CRITICAL_IMPORTANCE
+                and m.type in RETENTION_CRITICAL_TYPES
+            ):
+                m.retention_policy = RetentionPolicy.make_critical(
+                    source="dreamcycle",
+                    reason="high_importance",
+                ).to_dict()
+                save_memory(m)
+                logger.info(
+                    f"[RETENTION] Auto-elevated memory {m.id[:8]}... to CRITICAL "
+                    f"(importance={m.importance:.2f}, type={m.type})"
+                )
+
+    def _audit_critical_memories(self, memories) -> None:
+        """Emit telemetry for all CRITICAL memories (observability only)."""
+        if not RETENTION_AUDIT_LOG_ENABLED:
+            return
+        critical = [
+            m for m in memories
+            if RetentionPolicy.from_dict(m.retention_policy).class_ == RetentionClass.CRITICAL
+        ]
+        if critical:
+            logger.info(
+                f"[RETENTION] {len(critical)} CRITICAL memories protected from pruning: "
+                + ", ".join(f"{m.id[:8]}({m.type})" for m in critical)
+            )
+
+    # ------------------------------------------------------------------
+    # Pruning — retention-policy aware
+    # ------------------------------------------------------------------
+
+    def _prune(self, memories):
+        """
+        Delete low-importance raw memories, respecting retention policies.
+
+        Memories with a PROTECTED or CRITICAL retention_policy are never
+        deleted regardless of their importance score.  This prevents rare
+        but high-value memories (security alerts, one-time events,
+        catastrophic precursor logs) from being lost during consolidation.
+        """
+        self._apply_auto_retention(memories)
+        self._audit_critical_memories(memories)
+
+        removed = 0
+        skipped_protected = 0
+
+        for m in memories:
+            if m.is_concept:
+                continue
+            if m.importance >= PRUNE_IMPORTANCE_THRESHOLD:
+                continue
+
+            if not is_prune_safe(m):
+                skipped_protected += 1
+                rp = RetentionPolicy.from_dict(m.retention_policy)
+                logger.info(
+                    f"[RETENTION] Skipped prune for memory {m.id[:8]}... "
+                    f"— {rp.describe()}"
+                )
+                continue
+
+            delete_memory(m.id)
+            removed += 1
+
+        logger.info(
+            f"[PRUNE] Removed {removed} memories, "
+            f"protected {skipped_protected} by retention policy"
+        )
