@@ -6,8 +6,9 @@ LOG_PATH    = "data/logs/"
 CACHE_PATH  = "data/cache/"
 GRAPH_PATH  = "data/graph/"
 
-TOP_K         = 10
-EMBEDDING_DIM = 384
+TOP_K              = 10
+EMBEDDING_DIM      = 384
+SIMILARITY_THRESHOLD = 0.30   # BUG FIX: was missing; min cosine similarity for retrieval
 SCHEMA_VERSION = 8   # v8 adds belief tracking (contradiction_count, entailment_count, belief_version)
 
 # ===========================================================================
@@ -94,7 +95,7 @@ BACKPROP_TRIGGER_THRESHOLD     = 3.0
 BACKPROP_DELAYED_CONSOLIDATION = False
 BACKPROP_MAX_UPDATES_PER_PASS  = 50
 
-# Edge weights â how strongly importance propagates through each typed edge.
+# Edge weights Ã¢ÂÂ how strongly importance propagates through each typed edge.
 #
 # Causal (1.0):         Strongest: if B is the effect, A (the cause) is critical.
 # Goal dependency(0.90):Goals depend on preconditions; preconditions inherit urgency.
@@ -102,7 +103,7 @@ BACKPROP_MAX_UPDATES_PER_PASS  = 50
 # Temporal (0.70):      Precursor relationship; causality is uncertain but plausible.
 # Supports (0.65):      Corroborating evidence; moderate inheritance.
 # Semantic (0.50):      Pure similarity; weakest legitimate propagation path.
-# Contradicts (0.20):   Minimal backprop â opposing beliefs should not freely amplify.
+# Contradicts (0.20):   Minimal backprop Ã¢ÂÂ opposing beliefs should not freely amplify.
 BACKPROP_EDGE_WEIGHTS = {
     "causal":          1.00,
     "goal_dependency": 0.90,
@@ -129,7 +130,7 @@ GRAPH_VALID_EDGE_TYPES = frozenset({
     "goal_dependency",
 })
 
-# Directed edge types: edges that carry a meaningful AâB ordering.
+# Directed edge types: edges that carry a meaningful AÃ¢ÂÂB ordering.
 # Stored in a separate directed structure in addition to the undirected graph.
 GRAPH_DIRECTED_TYPES = frozenset({"causal", "goal_dependency", "temporal"})
 
@@ -139,8 +140,8 @@ GRAPH_DIRECTED_TYPES = frozenset({"causal", "goal_dependency", "temporal"})
 
 # Full 3-class NLI thresholds.
 # Scores are softmax probabilities that sum to 1.0.
-NLI_ENTAILMENT_THRESHOLD = 0.60   # min entailment score â treat as ENTAILMENT
-NLI_NEUTRAL_THRESHOLD    = 0.50   # min neutral score   â treat as NEUTRAL (fallback)
+NLI_ENTAILMENT_THRESHOLD = 0.60   # min entailment score Ã¢ÂÂ treat as ENTAILMENT
+NLI_NEUTRAL_THRESHOLD    = 0.50   # min neutral score   Ã¢ÂÂ treat as NEUTRAL (fallback)
 
 # Persistent queue for ContradictionEvents.
 CONTRADICTION_QUEUE_PATH = "data/cache/contradiction_queue.json"
@@ -151,6 +152,6 @@ ENTAILMENT_IMPORTANCE_BOOST  = 0.10   # importance delta for the existing candid
 MERGE_SIMILARITY_THRESHOLD   = 0.85   # cosine similarity threshold for concept merge
 
 # GhostMind arbitration hook.
-# False  â ContradictionEvents are applied immediately by BeliefSystem.
-# True   â Events are queued; GhostMind is expected to consume them.
+# False  Ã¢ÂÂ ContradictionEvents are applied immediately by BeliefSystem.
+# True   Ã¢ÂÂ Events are queued; GhostMind is expected to consume them.
 GHOSTMIND_ARBITRATION_ENABLED = False
