@@ -80,7 +80,7 @@ def _migrate_v3_to_v4(data: dict) -> dict:
 
 def _migrate_v4_to_v5(data: dict) -> dict:
     """BUG FIX #6: v5 added full decay_strategy support.
-    No new fields required Ã¢ÂÂ this migration simply stamps the version
+    No new fields required ÃÂ¢ÃÂÃÂ this migration simply stamps the version
     so existing records are recognised as current and aren't re-migrated
     on every load."""
     data["schema_version"] = 5
@@ -120,8 +120,8 @@ def _migrate_v6_to_v7(data: dict) -> dict:
     """
     v7: add Retrospective Importance Revaluation tracking fields.
 
-    backprop_boost   â cumulative importance delta added by backpropagation.
-    backprop_version â monotonic counter of backprop writes to this memory.
+    backprop_boost   Ã¢ÂÂ cumulative importance delta added by backpropagation.
+    backprop_version Ã¢ÂÂ monotonic counter of backprop writes to this memory.
 
     Existing memories start at 0 / 0 so they are eligible for their first
     backprop pass without any special-casing in the engine.
@@ -132,6 +132,24 @@ def _migrate_v6_to_v7(data: dict) -> dict:
     return data
 
 
+
+
+def _migrate_v7_to_v8(data: dict) -> dict:
+    """
+    v8: add Belief System tracking fields.
+
+    contradiction_count â times this memory lost a contradiction resolution.
+    entailment_count    â times another memory confirmed / corroborated this one.
+    belief_version      â monotonic counter for BeliefSystem writes.
+
+    All three default to 0 so existing memories start as uncontested beliefs.
+    """
+    data.setdefault("contradiction_count", 0)
+    data.setdefault("entailment_count", 0)
+    data.setdefault("belief_version", 0)
+    data["schema_version"] = 8
+    return data
+
 _MIGRATIONS = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -139,6 +157,7 @@ _MIGRATIONS = {
     4: _migrate_v4_to_v5,   # BUG FIX #6: was missing, causing silent no-op skip
     5: _migrate_v5_to_v6,
     6: _migrate_v6_to_v7,
+    7: _migrate_v7_to_v8,   # BUG FIX: was missing; v8 adds belief tracking fields
 }
 
 
