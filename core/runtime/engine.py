@@ -1,28 +1,29 @@
 """
-DreamCloud runtime engine — v5.
+DreamCloud runtime engine — v6.
 
-Changes from v4
+Changes from v5
 ---------------
-1. Cognitive Homeostasis telemetry layer added (non-breaking).
-   After every retrieval cycle the engine:
-     a. Records retrieved IDs in RetrievalAnalytics (sliding window).
-     b. Records graph-edge traversals in GraphHeatmapTracker.
-     c. Tracks per-memory activation pressure via ActivationTracker.
-     d. Polls AutonomicRegulator — if Shannon entropy of the retrieval
-        distribution drops below ENTROPY_THRESHOLD, the regulator
-        raises NOVELTY_WEIGHT and lowers ACTIVATION_PENALTY_WEIGHT,
-        counteracting concentration and restoring diversity.
+Feature 5 — Typed Graph Edges
+    The engine now uses the extended MemoryGraph with all 7 typed edge types
+    (semantic, causal, temporal, derived_from, supports, contradicts,
+    goal_dependency) and directed causal tracking.
 
-2. Scoring formula extended with two new homeostasis terms:
-     - activation_penalty : penalises over-retrieved memories so they
-       step back and allow less-seen memories to surface.
-     - novelty_bonus      : rewards recently-stored memories that have
-       had little retrieval exposure so far.
-   Both terms use regulated weights from AutonomicRegulator and decay
-   exponentially with time (ACTIVATION_DECAY_CONSTANT / NOVELTY_DECAY_CONSTANT).
+Feature 6 — Contradiction Handling & Belief Systems
+    1. Reactive contradiction detection is REPLACED by a structured BeliefSystem
+       pipeline that runs full 3-class NLI (contradiction | entailment | neutral).
+    2. A heuristic pre-filter (_heuristic_contradiction_candidate) still gates
+       the NLI call to avoid unnecessary model invocations.
+    3. BeliefSystem queues ContradictionEvents for arbitration:
+       - Immediately (GHOSTMIND_ARBITRATION_ENABLED=False, default).
+       - Via GhostMind (GHOSTMIND_ARBITRATION_ENABLED=True).
+    4. ENTAILMENT outcomes now reinforce both memories rather than being silently
+       discarded — the old code only handled contradiction.
 
-3. All v4 behaviour (contradiction detection, background extraction,
-   DreamCycle, graph expansion, typed ranking) is unchanged.
+    The legacy detect_contradiction() function is preserved for backward
+    compatibility but is no longer called in the main loop.
+
+All v5 behaviour (Cognitive Homeostasis, background extraction, DreamCycle,
+graph expansion, typed ranking, activation decay) is unchanged.
 """
 
 import traceback
@@ -46,6 +47,7 @@ from core.memory.store import (
 from core.memory.schema import Memory, MemoryType
 from core.memory.memory_filter import should_store
 from core.memory.extractor import extract_memories
+from core.memory.contradiction_system import BeliefSystem, BeliefOutcome
 
 from core.runtime.prompt_builder import build_prompt
 from core.runtime.llama_runner import run_llama
@@ -79,14 +81,14 @@ from core.telemetry import (
     MemoryStarvationDetector,
     GraphHeatmapTracker,
     AutonomicRegulator,
-    ActivationDecayManager,             # BUG FIX #5: was never imported or used
+    ActivationDecayManager,
 )
 
 DREAM_CYCLE_INTERVAL = 60
 
 
 # ---------------------------------------------------------------------------
-# Contradiction detection — heuristic pre-filter + NLI validation
+# Heuristic pre-filter (fast gate before NLI call)
 # ---------------------------------------------------------------------------
 
 _NEGATIONS = {
@@ -111,21 +113,37 @@ def _content_words(tokens: set) -> set:
     return tokens - _STOP_WORDS - _NEGATIONS
 
 
+def _heuristic_contradiction_candidate(a: str, b: str) -> bool:
+    """
+    Fast pre-filter: return True if the pair MIGHT be contradictory.
+
+    Conditions:
+    1. The two statements share >= 2 content words (same topic).
+    2. Exactly one of them contains a negation token.
+
+    This gates the full NLI call so the model is only invoked when there is
+    a reasonable chance of a contradiction — reducing latency for the common
+    case of unrelated or compatible memories.
+    """
+    ta = _tokenize(a)
+    tb = _tokenize(b)
+    shared = _content_words(ta) & _content_words(tb)
+
+    if len(shared) < 2:
+        return False
+
+    return bool(ta & _NEGATIONS) != bool(tb & _NEGATIONS)
+
+
 def detect_contradiction(a: str, b: str) -> bool:
     """
-    Two-stage contradiction detection.
+    Two-stage contradiction detection (LEGACY — kept for backward compat).
 
-    Stage 1 — Heuristic pre-filter (free):
-        The two statements must share >= 2 content words AND exactly one must
-        contain a negation token.
+    Stage 1 — Heuristic pre-filter (free).
+    Stage 2 — NLI model validation (only when Stage 1 fires).
 
-    Stage 2 — NLI model validation (only when Stage 1 fires):
-        nli_validator.is_contradiction() runs a single CrossEncoder forward
-        pass and returns True if the contradiction class probability exceeds
-        NLI_CONTRADICTION_THRESHOLD (default 0.7).
-
-        If the NLI call raises, we log a warning and fall back to the
-        heuristic result.
+    Prefer BeliefSystem.evaluate() for new code; it handles entailment and
+    neutral outcomes and integrates with ContradictionEventQueue.
     """
     ta = _tokenize(a)
     tb = _tokenize(b)
@@ -203,6 +221,10 @@ class DreamCloudEngine:
         self.memory      = MemoryPipeline(self.memory_core, self.event_bus)
         self.graph       = MemoryGraph()
 
+        # Feature 6: Belief System — wraps NLI into a structured pipeline
+        # with ContradictionEvent queueing and GhostMind arbitration hook.
+        self.belief_system = BeliefSystem(graph=self.graph)
+
         self.last_retrieved_ids: list = []
         self.similarity_map:     dict = {}
 
@@ -239,8 +261,6 @@ class DreamCloudEngine:
             entropy_monitor=self.entropy_monitor,
             config_module=mem_cfg,
         )
-        # BUG FIX #5: ActivationDecayManager was imported (incorrectly) but
-        # never instantiated or called anywhere in the engine.  Wire it in now.
         self.decay_manager      = ActivationDecayManager()
 
     # ------------------------------------------------------------------
@@ -361,7 +381,6 @@ class DreamCloudEngine:
                         recency_penalty = (now - m.timestamp) / 86400
 
                         # ── Cognitive Homeostasis terms ────────────────
-                        # 1. Activation penalty — penalises over-retrieved memories.
                         dt = now - m.last_activated
                         decayed_activation = (
                             m.activation * math.exp(-dt / ACTIVATION_DECAY_CONSTANT)
@@ -369,7 +388,6 @@ class DreamCloudEngine:
                         )
                         activation_penalty = effective_activation_penalty * decayed_activation
 
-                        # 2. Novelty bonus — rewards less-recently-retrieved memories.
                         age = now - m.timestamp
                         novelty_bonus = (
                             effective_novelty * math.exp(-age / NOVELTY_DECAY_CONSTANT)
@@ -382,11 +400,10 @@ class DreamCloudEngine:
                             + (0.3 * importance)
                             + (0.1 * m.reliability)
                             - (0.01 * recency_penalty)
-                            - activation_penalty       # homeostasis penalty
-                            + novelty_bonus            # homeostasis bonus
+                            - activation_penalty
+                            + novelty_bonus
                         )
 
-                        # Update activation pressure on this memory.
                         m.activation     = decayed_activation + 1.0
                         m.last_activated = now
 
@@ -401,21 +418,41 @@ class DreamCloudEngine:
                 # -- Track activations for diagnostics -----------------
                 self.activation_tracker.record_batch(memories)
 
-                # -- Contradiction resolution (NLI-validated) ----------
-                for i, m1 in enumerate(memories):
-                    for m2 in memories[i + 1:]:
-                        if detect_contradiction(m1.content, m2.content):
-                            s1 = m1.metadata.get("final_score", 0)
-                            s2 = m2.metadata.get("final_score", 0)
+                # -- Belief resolution (Feature 6) ---------------------
+                # Replaces the old reactive contradiction loop.
+                # Full 3-class NLI pipeline:
+                #   - heuristic pre-filter (free, gates NLI call)
+                #   - CONTRADICTION → penalize weaker memory, register
+                #                     'contradicts' graph edge
+                #   - ENTAILMENT    → reinforce both memories, register
+                #                     'supports' graph edge
+                #   - NEUTRAL       → no action (beliefs coexist)
+                #
+                # The highest-ranked retrieved memory acts as the reference;
+                # pairs are evaluated using the fast heuristic pre-filter to
+                # avoid unnecessary NLI invocations.
+                if len(memories) > 1:
+                    ref = memories[0]  # highest-scored memory is the reference
+                    candidates_for_belief = [
+                        m for m in memories[1:]
+                        if _heuristic_contradiction_candidate(ref.content, m.content)
+                    ]
+                    if candidates_for_belief:
+                        self.belief_system.evaluate(
+                            new_memory=ref,
+                            candidates=candidates_for_belief,
+                            save_fn=save_memory,
+                        )
 
-                            if s1 >= s2:
-                                m2.importance  *= CONTRADICTION_PENALTY
-                                m2.reliability  = max(0.0, m2.reliability - 0.05)
-                                save_memory(m2)
-                            else:
-                                m1.importance  *= CONTRADICTION_PENALTY
-                                m1.reliability  = max(0.0, m1.reliability - 0.05)
-                                save_memory(m1)
+                    # Also check non-ref pairs that pass the heuristic.
+                    for i, m1 in enumerate(memories[1:], start=1):
+                        for m2 in memories[i + 1:]:
+                            if _heuristic_contradiction_candidate(m1.content, m2.content):
+                                self.belief_system.evaluate(
+                                    new_memory=m1,
+                                    candidates=[m2],
+                                    save_fn=save_memory,
+                                )
 
                 # -- Save updated activation values --------------------
                 for m in merged:
@@ -450,8 +487,6 @@ class DreamCloudEngine:
                 self.starvation_detector.check()
 
                 # -- Periodic decay consolidation (hybrid sweep) -------
-                # BUG FIX #5: ActivationDecayManager.consolidate() was never
-                # called; it now runs the hybrid sweep when its interval elapses.
                 all_mems_for_decay = load_all_memories()
                 decay_stats = self.decay_manager.consolidate(all_mems_for_decay)
 
