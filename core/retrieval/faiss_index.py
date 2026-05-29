@@ -66,31 +66,46 @@ class FaissIndex:
             if memory_id not in self.id_to_index:
                 self.add(embedding, memory_id)
                 return
- 
-            self._embedding_cache: dict
+
             if not hasattr(self, "_embedding_cache"):
                 self._embedding_cache = {}
- 
+
+            # Update this memory's embedding in the cache.
             self._embedding_cache[memory_id] = embedding
- 
+
+            # BUG FIX: the old implementation silently dropped any memory
+            # whose embedding was not already in _embedding_cache (i.e. every
+            # memory except the one being updated when the cache was cold).
+            # We now fall back to loading all memories from the store so the
+            # rebuilt index is always complete.
+            missing_ids = [mid for mid in self.id_map if mid not in self._embedding_cache]
+            if missing_ids:
+                try:
+                    from core.memory.store import load_all_memories
+                    for m in load_all_memories():
+                        if m.id in missing_ids and m.embedding:
+                            self._embedding_cache[m.id] = m.embedding
+                except Exception:
+                    pass  # best-effort; missing embeddings are skipped below
+
             new_index = faiss.IndexFlatIP(EMBEDDING_DIM)
             new_id_map = []
             new_id_to_index = {}
- 
-            for pos, mid in enumerate(self.id_map):
+
+            for mid in self.id_map:
                 vec_data = self._embedding_cache.get(mid)
                 if vec_data is None:
-                    continue
- 
+                    continue  # skip only if embedding is truly unavailable
+
                 vec = self._normalize(vec_data)
                 new_index.add(vec)
                 new_id_to_index[mid] = len(new_id_map)
                 new_id_map.append(mid)
- 
+
             self.index = new_index
             self.id_map = new_id_map
             self.id_to_index = new_id_to_index
- 
+
             self._persist()
  
     def rebuild(self, memories):
