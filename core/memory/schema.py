@@ -1,22 +1,29 @@
 """
-Memory schema — v7.
+Memory schema — v8.
+
+Changes from v7
+---------------
+* `contradiction_count` (int, default 0) — incremented each time BeliefSystem
+  determines that this memory lost a contradiction resolution.  High values
+  signal an unreliable or frequently-disputed belief.
+
+* `entailment_count` (int, default 0) — incremented each time another memory
+  is confirmed to entail / corroborate this one.  High values signal a
+  well-confirmed, reliable belief.  Used by DreamCycle to prioritise concept
+  strengthening for memories with strong entailment support.
+
+* `belief_version` (int, default 0) — monotonic counter incremented on each
+  BeliefSystem write (contradiction OR entailment resolution).  Enables
+  convergence detection and audit of belief evolution over time.
 
 Changes from v6
 ---------------
-* `backprop_boost`   (float, default 0.0) — cumulative importance added to
-  this memory by the Retrospective Importance Revaluation engine.  Stored
-  separately from the base importance so that audit logs can distinguish
-  original scoring from retroactively propagated signal.
-
-* `backprop_version` (int, default 0) — monotonic counter incremented each
-  time the backprop engine writes a new importance estimate to this memory.
-  Useful for detecting which memories are heavily connected to high-importance
-  events and for debugging propagation chains.
+* v7: `backprop_boost` and `backprop_version` for Retrospective Importance
+  Revaluation (v15).
 
 Changes from v5
 ---------------
-* v6: `retention_policy` (dict, default VOLATILE) — structured archival
-  policy replacing implicit boolean flags.
+* v6: `retention_policy` (dict) — structured archival policy.
 
 Changes from v4
 ---------------
@@ -31,7 +38,7 @@ importance hard-cap) are unchanged.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional
+from typing import List, Dict
 import time
 import uuid
 
@@ -113,8 +120,8 @@ class Memory:
     # ------------------------------------------------------------------
     # Cognitive Homeostasis — retrieval pressure tracking (v4)
     # ------------------------------------------------------------------
-    activation:     float = 0.0   # cumulative retrieval pressure (decays over time)
-    last_activated: float = 0.0   # unix timestamp of most recent retrieval
+    activation:     float = 0.0
+    last_activated: float = 0.0
 
     # ------------------------------------------------------------------
     # DreamCycle concept layer
@@ -131,12 +138,23 @@ class Memory:
     # ------------------------------------------------------------------
     # Retrospective Importance Revaluation (v7)
     # ------------------------------------------------------------------
-    # How much importance the backprop engine has added to this memory.
-    # Stored separately so the original scoring signal is always auditable.
     backprop_boost:   float = 0.0
-    # Incremented each time the backprop engine updates this memory's
-    # importance, enabling chain-depth analysis and convergence detection.
     backprop_version: int   = 0
+
+    # ------------------------------------------------------------------
+    # Belief System tracking (v8)
+    # ------------------------------------------------------------------
+    # Number of times BeliefSystem penalized this memory in a contradiction.
+    # High values indicate an unreliable or frequently-disputed belief.
+    contradiction_count: int = 0
+
+    # Number of times another memory was confirmed to entail / corroborate
+    # this one.  High values indicate a well-supported belief.
+    entailment_count: int = 0
+
+    # Monotonic counter incremented on each BeliefSystem write.
+    # Enables convergence detection and belief evolution auditing.
+    belief_version: int = 0
 
     # ------------------------------------------------------------------
     # Importance property with hard cap
