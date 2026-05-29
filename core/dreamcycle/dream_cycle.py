@@ -23,6 +23,7 @@ from core.dreamcycle.concept_manager import create_concept
 from core.infrastructure.logger import logger
 from core.memory.retention import RetentionPolicy, RetentionClass, is_prune_safe
 from core.memory.importance_backprop import ImportanceBackpropEngine
+from core.memory.contradiction_system import BeliefSystem
 from config.memory_config import (
     RETENTION_AUDIT_LOG_ENABLED,
     RETENTION_AUTO_CRITICAL_IMPORTANCE,
@@ -32,7 +33,7 @@ from config.memory_config import (
  
 # Maximum number of ANN neighbours to inspect per memory during clustering.
 # Increasing this raises recall at the cost of more comparisons, but it
-# remains O(N * _ANN_K) rather than O(NÂ²).
+# remains O(N * _ANN_K) rather than O(NÃÂ²).
 _ANN_K = 16
  
  
@@ -42,7 +43,8 @@ class DreamCycle:
         self.embedder = embedder or Embedder()
         self.graph    = graph    or MemoryGraph()
         self.index    = index
-        self.backprop = ImportanceBackpropEngine(self.graph)
+        self.backprop      = ImportanceBackpropEngine(self.graph)
+        self.belief_system = BeliefSystem(graph=self.graph)
  
     def run(self):
         logger.info("DreamCycle started...")
@@ -65,6 +67,8 @@ class DreamCycle:
  
         self._run_backprop_pass(memories)
  
+        self._flush_belief_events(memories)
+
         self._prune(memories)
  
         logger.info("DreamCycle complete.")
@@ -76,7 +80,7 @@ class DreamCycle:
                 save_memory(m)
  
     # ------------------------------------------------------------------
-    # Kept for _create_concepts() â per-member similarity to graph.connect
+    # Kept for _create_concepts() Ã¢ÂÂ per-member similarity to graph.connect
     # ------------------------------------------------------------------
  
     def _cosine(self, a, b) -> float:
@@ -88,7 +92,7 @@ class DreamCycle:
         return dot / (na * nb)
  
     # ------------------------------------------------------------------
-    # FAISS-accelerated clustering  (replaces O(NÂ²) loop)
+    # FAISS-accelerated clustering  (replaces O(NÃÂ²) loop)
     # ------------------------------------------------------------------
  
     def _cluster(self, memories) -> list:
@@ -104,7 +108,7 @@ class DreamCycle:
            CONCEPT_SIMILARITY_THRESHOLD becomes the cluster seed; all
            qualifying neighbours in its ANN result are folded in immediately.
            This mirrors the original single-pass greedy strategy but runs in
-           O(N * _ANN_K) time instead of O(NÂ²).
+           O(N * _ANN_K) time instead of O(NÃÂ²).
  
         Falls back gracefully: if any memory lacks an embedding it is placed
         in a singleton cluster so it is never silently dropped.
@@ -125,7 +129,7 @@ class DreamCycle:
         invalid = [m for m in raw_memories if not m.embedding]
  
         if not valid:
-            # Nothing to cluster â return singletons.
+            # Nothing to cluster Ã¢ÂÂ return singletons.
             return [[m] for m in raw_memories]
  
         dim     = len(valid[0].embedding)
@@ -133,7 +137,7 @@ class DreamCycle:
         _faiss.normalize_L2(vectors)  # in-place normalisation for cosine
  
         # ----------------------------------------------------------------
-        # Temporary FAISS index â IndexFlatIP is exact but still O(N * k)
+        # Temporary FAISS index Ã¢ÂÂ IndexFlatIP is exact but still O(N * k)
         # for the batched search; no training required.
         # ----------------------------------------------------------------
         ann_index = _faiss.IndexFlatIP(dim)
@@ -281,6 +285,20 @@ class DreamCycle:
     # Retention policy helpers
     # ------------------------------------------------------------------
 
+    def _flush_belief_events(self, memories: list) -> None:
+        """
+        Apply any pending ContradictionEvents during DreamCycle consolidation.
+
+        This is the GhostMind safety net: if GhostMind arbitration is enabled
+        but GhostMind has not yet consumed the queue, we apply the pending
+        events here so that no belief resolution is lost between cycles.
+
+        Also runs in non-GhostMind mode (events will already be resolved, so
+        the call is a no-op, but it keeps the code path uniform).
+        """
+        memory_map = {m.id: m for m in memories}
+        self.belief_system.flush_pending_ghostmind_events(memory_map)
+
     def _apply_auto_retention(self, memories) -> None:
         """
         Auto-elevate memories to CRITICAL when they meet importance and type
@@ -326,7 +344,7 @@ class DreamCycle:
             )
 
     # ------------------------------------------------------------------
-    # Pruning â retention-policy aware
+    # Pruning Ã¢ÂÂ retention-policy aware
     # ------------------------------------------------------------------
 
     def _prune(self, memories):
@@ -355,7 +373,7 @@ class DreamCycle:
                 rp = RetentionPolicy.from_dict(m.retention_policy)
                 logger.info(
                     f"[RETENTION] Skipped prune for memory {m.id[:8]}... "
-                    f"â {rp.describe()}"
+                    f"Ã¢ÂÂ {rp.describe()}"
                 )
                 continue
 
